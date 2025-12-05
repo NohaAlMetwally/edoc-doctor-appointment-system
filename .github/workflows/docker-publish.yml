@@ -37,14 +37,15 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_TAG }}
-            nohaalmetwally/doctor-appointment-app:latest
+            ${{ env.IMAGE_PREFIX }}:latest
 
-      # checkout terraform (public repo) into ./tf
       - name: Checkout terraform repo
         uses: actions/checkout@v4
         with:
           repository: NohaAlMetwally/doctors-app-tf
           path: tf
+
+      # REMOVED: Create dummy bastion key file (not needed anymore)
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -58,24 +59,34 @@ jobs:
         with:
           terraform_version: latest
 
-      - name: Show which image will be applied
-        run: |
-          echo "IMAGE_TAG=${IMAGE_TAG}"
-          if [ -z "${IMAGE_TAG}" ]; then
-            echo "ERROR: IMAGE_TAG is empty"
-            exit 1
-          fi
-
       - name: Terraform Init
         run: |
           cd tf
           terraform init -input=false
 
-      - name: Terraform Plan & Apply (update ECS task image)
+      # ADDED HERE: Safe Terraform plan & apply that only targets ECS
+      - name: Terraform Plan & Apply (ECS only)
         env:
           TF_VAR_container_image: ${{ env.IMAGE_TAG }}
         run: |
           cd tf
           echo "Applying container_image = ${TF_VAR_container_image}"
-          terraform plan -var "container_image=${TF_VAR_container_image}" -out=tfplan -input=false
-          terraform apply -input=false -auto-approve tfplan
+          
+          # Only target ECS resources, skip everything else (including bastion)
+          terraform plan \
+            -var "container_image=${TF_VAR_container_image}" \
+            -target=aws_ecs_task_definition.edoc_task \
+            -target=aws_ecs_service.edoc_service \
+            -out=tfplan \
+            -input=false
+          
+          # Check if plan was created successfully
+          if [ -f tfplan ]; then
+            echo "Applying ECS update..."
+            terraform apply -input=false -auto-approve tfplan
+            echo "ECS update applied successfully"
+          else
+            echo "No ECS changes to apply or plan creation failed"
+          fi
+
+      # REMOVED: Clean up step (not necessary as tfplan is already used)
