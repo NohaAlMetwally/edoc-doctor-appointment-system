@@ -1,28 +1,24 @@
-name: Build and push Docker image deploy to ECS
+name: Build image and deploy to ECS (simple)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
+    env:
+      IMAGE_PREFIX: nohaalmetwally/doctor-appointment-app
     steps:
-      - name: Checkout code
+      - name: Checkout app code
         uses: actions/checkout@v4
 
-      - name: Set short SHA and image tag
-        id: set-tags
+      - name: Set IMAGE_TAG (build number)
         run: |
-          SHORT_SHA=${GITHUB_SHA::7}
-          IMAGE_TAG="nohaalmetwally/doctor-appointment-app:1.3.${GITHUB_RUN_NUMBER}"
-          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${IMAGE_TAG}" > image_tag.txt
+          IMAGE_TAG="${IMAGE_PREFIX}:1.3.${GITHUB_RUN_NUMBER}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
           echo "Using IMAGE_TAG=${IMAGE_TAG}"
-          # show file contents for debugging
-          cat image_tag.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,54 +29,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image with build number
+      - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ steps.set-tags.outputs.image_tag }} # safe fallback if present, harmless if empty
+            ${{ env.IMAGE_TAG }}
             nohaalmetwally/doctor-appointment-app:latest
-        # Note: docker action ignores empty tags; main tag is in image_tag.txt (we'll rely on artifact)
 
-      - name: Upload image-tag artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-tag
-          path: image_tag.txt
-
-  deploy-infra:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    environment: production
-
-    steps:
+      # checkout terraform (public repo) into ./tf
       - name: Checkout terraform repo
         uses: actions/checkout@v4
         with:
           repository: NohaAlMetwally/doctors-app-tf
           path: tf
-
-      - name: Download image-tag artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: image-tag
-          path: .
-
-      - name: Read image tag into env
-        id: read-tag
-        run: |
-          if [ ! -f image_tag.txt ]; then
-            echo "image_tag.txt missing!"
-            ls -la .
-            exit 1
-          fi
-          IMAGE_TAG=$(cat image_tag.txt | tr -d '\r\n')
-          echo "IMAGE_TAG='${IMAGE_TAG}'"
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          # also write to output for quick checks
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -94,11 +58,11 @@ jobs:
         with:
           terraform_version: latest
 
-      - name: Show image tag used for deploy (debug)
+      - name: Show which image will be applied
         run: |
-          echo "IMAGE_TAG from artifact: '${{ env.IMAGE_TAG }}'"
-          if [ -z "${{ env.IMAGE_TAG }}" ]; then
-            echo "ERROR: IMAGE_TAG empty!"
+          echo "IMAGE_TAG=${IMAGE_TAG}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "ERROR: IMAGE_TAG is empty"
             exit 1
           fi
 
