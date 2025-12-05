@@ -66,6 +66,20 @@ jobs:
             exit 1
           fi
 
+      - name: Debug TF root contents
+        run: |
+          echo "WORKDIR = $(pwd)"
+          echo "Listing ./tf dir:"
+          ls -la tf || true
+          echo "Print variables.tf (if present):"
+          if [ -f tf/variables.tf ]; then
+            sed -n '1,200p' tf/variables.tf
+          else
+            echo "tf/variables.tf not found"
+          fi
+            echo "Print any .tf files in root:"
+            ls -la tf/*.tf || true
+
       - name: Terraform Init
         run: |
           cd tf
