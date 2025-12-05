@@ -1,26 +1,3 @@
-<?php
-// admin/index.php
-// Move all header-affecting PHP to the very top of the file (no output before this)
-
-// Start session and authentication
-session_start();
-
-date_default_timezone_set('Asia/Kolkata');
-
-if (isset($_SESSION["user"])) {
-    if (($_SESSION["user"]) == "" || $_SESSION['usertype'] != 'a') {
-        header("Location: ../login.php");
-        exit;
-    }
-} else {
-    header("Location: ../login.php");
-    exit;
-}
-
-// Import database - make sure connection.php does not echo or send output
-include("../connection.php");
-?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -47,7 +24,27 @@ include("../connection.php");
     
 </head>
 <body>
+    <?php
 
+    //learn from w3schools.com
+
+    session_start();
+
+    if(isset($_SESSION["user"])){
+        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='a'){
+            header("location: ../login.php");
+        }
+
+    }else{
+        header("location: ../login.php");
+    }
+    
+
+    //import database
+    include("../connection.php");
+
+    
+    ?>
     <div class="container">
         <div class="menu">
             <table class="menu-container" border="0">
@@ -124,7 +121,7 @@ include("../connection.php");
                                     echo ' </datalist>';
                                     ?>
                                     
-                                   
+                               
                                     <input type="Submit" value="Search" class="login-btn btn-primary-soft btn" style="padding-left: 25px;padding-right: 25px;padding-top: 10px;padding-bottom: 10px;">
                                 
                                 </form>
@@ -136,7 +133,8 @@ include("../connection.php");
                                 </p>
                                 <p class="heading-sub12" style="padding: 0;margin: 0;">
                                     <?php 
-                                // $date_default_timezone_set already called above
+                                date_default_timezone_set('Asia/Kolkata');
+        
                                 $today = date('Y-m-d');
                                 echo $today;
 
@@ -226,7 +224,8 @@ include("../connection.php");
                     </td>
                 </tr>
 
-                
+
+
 
 
 
@@ -275,13 +274,13 @@ include("../connection.php");
                                                 </th>
                                                 <th class="table-headin">
                                                     
-                                                    
+                                                
                                                     Doctor
                                                     
                                                 </th>
                                                 <th class="table-headin">
                                                     
-                                                    
+                                                
                                                     Session
                                                     
                                                 </th>
@@ -367,7 +366,7 @@ include("../connection.php");
                                         <tr>
                                                 <th class="table-headin">
                                                     
-                                                    
+                                                
                                                 Session Title
                                                 
                                                 </th>
