@@ -8,9 +8,6 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # expose job output 'image-tag' that comes from the set-tags step
-    outputs:
-      image-tag: ${{ steps.set-tags.outputs.image_tag }}
 
     steps:
       - name: Checkout code
@@ -19,13 +16,13 @@ jobs:
       - name: Set short SHA and image tag
         id: set-tags
         run: |
-          # create a short SHA and the image tag you want to push
           SHORT_SHA=${GITHUB_SHA::7}
           IMAGE_TAG="nohaalmetwally/doctor-appointment-app:1.3.${GITHUB_RUN_NUMBER}"
           echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
-          # set step output so job exposes it
-          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=${IMAGE_TAG}" > image_tag.txt
           echo "Using IMAGE_TAG=${IMAGE_TAG}"
+          # show file contents for debugging
+          cat image_tag.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -43,8 +40,15 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ steps.set-tags.outputs.image_tag }}
+            ${{ steps.set-tags.outputs.image_tag }} # safe fallback if present, harmless if empty
             nohaalmetwally/doctor-appointment-app:latest
+        # Note: docker action ignores empty tags; main tag is in image_tag.txt (we'll rely on artifact)
+
+      - name: Upload image-tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-tag
+          path: image_tag.txt
 
   deploy-infra:
     needs: build-and-push
@@ -58,6 +62,26 @@ jobs:
           repository: NohaAlMetwally/doctors-app-tf
           path: tf
 
+      - name: Download image-tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tag
+          path: .
+
+      - name: Read image tag into env
+        id: read-tag
+        run: |
+          if [ ! -f image_tag.txt ]; then
+            echo "image_tag.txt missing!"
+            ls -la .
+            exit 1
+          fi
+          IMAGE_TAG=$(cat image_tag.txt | tr -d '\r\n')
+          echo "IMAGE_TAG='${IMAGE_TAG}'"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          # also write to output for quick checks
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -70,11 +94,11 @@ jobs:
         with:
           terraform_version: latest
 
-      - name: Show image tag passed from previous job
+      - name: Show image tag used for deploy (debug)
         run: |
-          echo "Job-level output image-tag = '${{ needs.build-and-push.outputs.image-tag }}'"
-          if [ -z "${{ needs.build-and-push.outputs.image-tag }}" ]; then
-            echo "ERROR: image-tag is empty!"
+          echo "IMAGE_TAG from artifact: '${{ env.IMAGE_TAG }}'"
+          if [ -z "${{ env.IMAGE_TAG }}" ]; then
+            echo "ERROR: IMAGE_TAG empty!"
             exit 1
           fi
 
@@ -85,7 +109,7 @@ jobs:
 
       - name: Terraform Plan & Apply (update ECS task image)
         env:
-          TF_VAR_container_image: ${{ needs.build-and-push.outputs.image-tag }}
+          TF_VAR_container_image: ${{ env.IMAGE_TAG }}
         run: |
           cd tf
           echo "Applying container_image = ${TF_VAR_container_image}"
