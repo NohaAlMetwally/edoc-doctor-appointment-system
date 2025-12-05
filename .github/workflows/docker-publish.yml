@@ -3,11 +3,12 @@ name: Build and push Docker image deploy to ECS
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # expose an output called image-tag that comes from the set-tags step
+    # expose job output 'image-tag' that comes from the set-tags step
     outputs:
       image-tag: ${{ steps.set-tags.outputs.image_tag }}
 
@@ -18,14 +19,12 @@ jobs:
       - name: Set short SHA and image tag
         id: set-tags
         run: |
-          # short SHA (7 chars)
+          # create a short SHA and the image tag you want to push
           SHORT_SHA=${GITHUB_SHA::7}
-          # build number tag (you used 1.3 as prefix)
           IMAGE_TAG="nohaalmetwally/doctor-appointment-app:1.3.${GITHUB_RUN_NUMBER}"
-          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
-          # set the step output 'image_tag' so job outputs can reference it
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          # also print for logs
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+          # set step output so job exposes it
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "Using IMAGE_TAG=${IMAGE_TAG}"
 
       - name: Set up Docker Buildx
@@ -51,29 +50,34 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     environment: production
+
     steps:
-      # Checkout the terraform repo into ./tf (public repo -> no PAT needed)
       - name: Checkout terraform repo
         uses: actions/checkout@v4
         with:
           repository: NohaAlMetwally/doctors-app-tf
           path: tf
-          # token: ${{ secrets.GITHUB_TOKEN }}  # optional for public repo
 
-      # Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-        
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: latest
-          
-      # Move to terraform directory and run Terraform
+
+      - name: Show image tag passed from previous job
+        run: |
+          echo "Job-level output image-tag = '${{ needs.build-and-push.outputs.image-tag }}'"
+          if [ -z "${{ needs.build-and-push.outputs.image-tag }}" ]; then
+            echo "ERROR: image-tag is empty!"
+            exit 1
+          fi
+
       - name: Terraform Init
         run: |
           cd tf
@@ -84,7 +88,6 @@ jobs:
           TF_VAR_container_image: ${{ needs.build-and-push.outputs.image-tag }}
         run: |
           cd tf
-          # sanity print so you can see in logs what image is being applied
           echo "Applying container_image = ${TF_VAR_container_image}"
           terraform plan -var "container_image=${TF_VAR_container_image}" -out=tfplan -input=false
           terraform apply -input=false -auto-approve tfplan
