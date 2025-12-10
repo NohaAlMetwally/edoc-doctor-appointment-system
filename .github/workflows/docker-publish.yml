@@ -89,4 +89,3 @@ jobs:
             echo "No ECS changes to apply or plan creation failed"
           fi
 
-      # REMOVED: Clean up step (not necessary as tfplan is already used)
