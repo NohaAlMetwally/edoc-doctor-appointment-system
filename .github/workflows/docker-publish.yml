@@ -1,4 +1,4 @@
-name: Build image and deploy to ECS (simple)
+name: Build image and deploy to ECS
 
 on:
   push:
@@ -88,4 +88,5 @@ jobs:
           else
             echo "No ECS changes to apply or plan creation failed"
           fi
+
 
